@@ -77,6 +77,51 @@ function GenderStep({ vibe, onSelect, onBack }) {
 }
 
 
+// ─── Prompt Editor ──────────────────────────────────────────────────────────
+
+function PromptEditStep({ vibe, prompt, onGenerate, onBack }) {
+  const [text, setText] = useState(prompt);
+  return (
+    <div className="fade-up" style={{ paddingTop: 20 }}>
+      <div style={{ textAlign: "center", marginBottom: 16 }}>
+        <span style={{ fontSize: 32 }}>{vibe.emoji}</span>
+        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, margin: "8px 0 4px" }}>Review Prompt</h2>
+        <p style={{ color: "#666", fontSize: 12 }}>Edit if needed, then generate</p>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        style={{
+          width: "100%", minHeight: 180, padding: "14px", borderRadius: 14,
+          background: "rgba(255,255,255,0.04)", border: "1.5px solid rgba(255,255,255,0.1)",
+          color: "#ddd", fontSize: 13, lineHeight: 1.6, resize: "vertical",
+          fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box",
+        }}
+        onFocus={(e) => { e.target.style.borderColor = "rgba(201,169,110,0.4)"; }}
+        onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.1)"; }}
+      />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+        <span style={{ fontSize: 11, color: "#555" }}>{text.length} chars</span>
+        <button
+          onClick={() => setText(prompt)}
+          style={{ background: "none", border: "none", color: "#C9A96E", fontSize: 12, cursor: "pointer" }}
+        >Reset to default</button>
+      </div>
+      <button
+        onClick={() => onGenerate(text)}
+        className="btn-primary"
+        style={{
+          display: "block", width: "100%", padding: "16px", fontSize: 16, marginTop: 20,
+          background: "linear-gradient(135deg, #C9A96E, #8B6914)", color: "#fff",
+          borderRadius: 14, border: "none", cursor: "pointer",
+          boxShadow: "0 8px 32px rgba(201,169,110,0.25)",
+        }}
+      >Generate</button>
+      <button onClick={onBack} style={{ display: "block", margin: "16px auto 0", background: "none", border: "none", color: "#555", fontSize: 13, cursor: "pointer" }}>← Change gender</button>
+    </div>
+  );
+}
+
 // ─── Reference Images Banner ─────────────────────────────────────────────────
 
 function ReferenceBanner({ selfiePreview, costumeUrl, backgroundUrl }) {
@@ -183,23 +228,27 @@ export default function App() {
     setStep(2);
   };
 
-  const handleGenderSelect = async (selectedGender) => {
+  const handleGenderSelect = (selectedGender) => {
     setGender(selectedGender);
     setStep(4);
+  };
+
+  const handleGenerate = async (prompt) => {
+    setStep(5);
     setError(null); setElapsed(0);
     const start = Date.now();
     timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
     try {
       setStatus("Loading assets...");
-      const assets = await getVibeAssets(selectedVibe.id, selectedGender);
+      const assets = await getVibeAssets(selectedVibe.id, gender);
       setCostumeUrl(assets.costumeUrl);
       setBackgroundUrl(assets.backgroundUrl);
-      const result = await submitJob({ selfieFile: selfie, costumeUrl: assets.costumeUrl, backgroundUrl: assets.backgroundUrl, prompt: DEFAULT_PROMPT, onStatus: setStatus });
+      const result = await submitJob({ selfieFile: selfie, costumeUrl: assets.costumeUrl, backgroundUrl: assets.backgroundUrl, prompt, onStatus: setStatus });
       setFinalElapsed(Math.floor((Date.now() - start) / 1000));
       setResultImage(result);
-      setStep(5);
+      setStep(6);
     } catch (err) {
-      console.error(err); setError(err.message); setStep(3);
+      console.error(err); setError(err.message); setStep(4);
     } finally { clearInterval(timerRef.current); }
   };
 
@@ -217,8 +266,9 @@ export default function App() {
         {step === 1 && <UploadStep onFileSelect={handleFileSelect} />}
         {step === 2 && <VibeGrid selfiePreview={selfiePreview} onSelect={(v) => { setSelectedVibe(v); setStep(3); }} onBack={reset} />}
         {step === 3 && <GenderStep vibe={selectedVibe} onSelect={handleGenderSelect} onBack={() => setStep(2)} />}
-        {step === 4 && <ProcessingStep vibe={selectedVibe} elapsed={elapsed} selfiePreview={selfiePreview} costumeUrl={costumeUrl} backgroundUrl={backgroundUrl} />}
-        {step === 5 && <ResultStep vibe={selectedVibe} resultImage={resultImage} elapsed={finalElapsed} selfiePreview={selfiePreview} costumeUrl={costumeUrl} backgroundUrl={backgroundUrl} onTryAnother={() => { setResultImage(null); setStep(2); }} onReset={reset} />}
+        {step === 4 && <PromptEditStep vibe={selectedVibe} prompt={DEFAULT_PROMPT} onGenerate={handleGenerate} onBack={() => setStep(3)} />}
+        {step === 5 && <ProcessingStep vibe={selectedVibe} elapsed={elapsed} selfiePreview={selfiePreview} costumeUrl={costumeUrl} backgroundUrl={backgroundUrl} />}
+        {step === 6 && <ResultStep vibe={selectedVibe} resultImage={resultImage} elapsed={finalElapsed} selfiePreview={selfiePreview} costumeUrl={costumeUrl} backgroundUrl={backgroundUrl} onTryAnother={() => { setResultImage(null); setStep(2); }} onReset={reset} />}
       </div>
     </div>
   );

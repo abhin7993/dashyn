@@ -3,8 +3,10 @@
 export const DEFAULT_PROMPT =
   "Extract the person from Image 1, removing their original background completely. " +
   "Dress them in the full outfit and all accessories from Image 2. Place them " +
-  "naturally into the scene from Image 3 with matching lighting and shadows. The " +
-  "final image should look like a real photo taken at Image 3's location with no " +
+  "naturally into the scene from Image 3 with matching lighting and shadows. " +
+  "Maintain the original scale and proportions of all elements in Image 3's scene — " +
+  "objects like cars, buildings, and furniture must remain their real-world size relative to the person. " +
+  "The final image should look like a real photo taken at Image 3's location with no " +
   "remnants of Image 1's environment. The person should be in the most suitable pose for the setting and outfit.";
 
 export const VIBES = [
