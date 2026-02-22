@@ -21,6 +21,11 @@ const WORKFLOW = {
   save_image: { class_type: "SaveImage", inputs: { images: ["329", 0], filename_prefix: "vibe_output" } },
 };
 
+// Fixed prompt for Pass 1 (outfit generation)
+const OUTFIT_PROMPT =
+  "Dress the person in Image 1 in the complete outfit, accessories, jewelry, bags, and shoes from Image 2. " +
+  "Place them on the plain background from Image 3. The person should be in a natural standing pose.";
+
 // ─── Image Processing ────────────────────────────────────────────────────────
 
 function processImage(file, { cropPortrait = true, maxSize = 1024 } = {}) {
@@ -59,62 +64,41 @@ function processImage(file, { cropPortrait = true, maxSize = 1024 } = {}) {
     if (file instanceof File || file instanceof Blob) {
       img.src = URL.createObjectURL(file);
     } else {
-      // It's already a URL or data URI
       img.src = file;
     }
   });
 }
 
+// Generate a plain neutral background for Pass 1
+function generateNeutralBackground() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 768;
+  canvas.height = 1344;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#e8e8e8";
+  ctx.fillRect(0, 0, 768, 1344);
+  return canvas.toDataURL("image/png");
+}
+
 // ─── API Communication ───────────────────────────────────────────────────────
 
-// Use proxy in production, direct in dev
 const getApiBase = () => {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-  // In production on Vercel, use /api routes
   if (window.location.hostname !== "localhost") return "/api";
-  // Local dev — direct to RunPod (API key in env)
   return "/api";
 };
 
-export async function submitJob({ selfieFile, costumeUrl, backgroundUrl, prompt, onStatus }) {
-  onStatus?.("Preparing images...");
-
-  // Process selfie — crop to portrait
-  const selfieB64 = await processImage(selfieFile, { cropPortrait: true });
-
-  // Fetch costume and background from URLs, process them
-  const [costumeBlob, bgBlob] = await Promise.all([
-    fetch(costumeUrl).then(r => r.blob()),
-    fetch(backgroundUrl).then(r => r.blob()),
-  ]);
-
-  const costumeB64 = await processImage(costumeBlob, { cropPortrait: false }); // costume keeps original ratio
-  const bgB64 = await processImage(bgBlob, { cropPortrait: false }); // background keeps original ratio — preserves spatial context
-
-  // Build workflow
+// Submit a workflow to RunPod and poll until complete
+async function runWorkflow(prompt, images, onStatus) {
   const wf = JSON.parse(JSON.stringify(WORKFLOW));
   wf["327"].inputs.prompt = prompt;
   wf["324"].inputs.seed = Math.floor(Math.random() * 4294967295);
 
-  const payload = {
-    input: {
-      workflow: wf,
-      images: [
-        { name: "person.png", image: selfieB64 },
-        { name: "costume.png", image: costumeB64 },
-        { name: "background.png", image: bgB64 },
-      ],
-    },
-  };
-
-  onStatus?.("Submitting job...");
-
-  // Submit via proxy
   const base = getApiBase();
   const submitResp = await fetch(`${base}/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ input: { workflow: wf, images } }),
   });
 
   if (!submitResp.ok) {
@@ -123,40 +107,64 @@ export async function submitJob({ selfieFile, costumeUrl, backgroundUrl, prompt,
   }
 
   const { id: jobId } = await submitResp.json();
-  onStatus?.("Generating your look...");
 
-  // Poll for result
   while (true) {
     await new Promise(r => setTimeout(r, 3000));
-
     const statusResp = await fetch(`${base}/status/${jobId}`);
-    if (!statusResp.ok) {
-      throw new Error(`Status check failed: ${statusResp.status}`);
-    }
-
+    if (!statusResp.ok) throw new Error(`Status check failed: ${statusResp.status}`);
     const data = await statusResp.json();
 
     if (data.status === "COMPLETED") {
-      const images = data.output?.images || [];
-      if (images.length > 0) {
-        return `data:image/png;base64,${images[0].data}`;
-      }
+      const imgs = data.output?.images || [];
+      if (imgs.length > 0) return `data:image/png;base64,${imgs[0].data}`;
       throw new Error("No images in output");
     }
-
-    if (data.status === "FAILED") {
-      throw new Error(data.error || "Generation failed");
-    }
-
-    // Still processing
-    onStatus?.("Generating your look...");
+    if (data.status === "FAILED") throw new Error(data.error || "Generation failed");
+    onStatus?.();
   }
 }
 
-// Fetch a random costume + background for a vibe + gender
+// ─── Pass 1: Generate person in outfit on neutral background ─────────────────
+
+export async function generateOutfit({ selfieFile, costumeUrl, onStatus }) {
+  onStatus?.("Preparing images...");
+
+  const selfieB64 = await processImage(selfieFile, { cropPortrait: true });
+  const costumeBlob = await fetch(costumeUrl).then(r => r.blob());
+  const costumeB64 = await processImage(costumeBlob, { cropPortrait: false });
+  const neutralBg = generateNeutralBackground();
+
+  onStatus?.("Pass 1: Generating outfit...");
+
+  return await runWorkflow(OUTFIT_PROMPT, [
+    { name: "person.png", image: selfieB64 },
+    { name: "costume.png", image: costumeB64 },
+    { name: "background.png", image: neutralBg },
+  ], () => onStatus?.("Pass 1: Generating outfit..."));
+}
+
+// ─── Pass 2: Place person into background scene ─────────────────────────────
+
+export async function placeInScene({ personImage, backgroundUrl, prompt, onStatus }) {
+  onStatus?.("Pass 2: Preparing scene...");
+
+  const bgBlob = await fetch(backgroundUrl).then(r => r.blob());
+  const bgB64 = await processImage(bgBlob, { cropPortrait: false });
+
+  onStatus?.("Pass 2: Placing in scene...");
+
+  return await runWorkflow(prompt, [
+    { name: "person.png", image: personImage },
+    { name: "costume.png", image: personImage },
+    { name: "background.png", image: bgB64 },
+  ], () => onStatus?.("Pass 2: Placing in scene..."));
+}
+
+// ─── Assets ──────────────────────────────────────────────────────────────────
+
 export async function getVibeAssets(vibeId, gender) {
   const base = getApiBase();
   const resp = await fetch(`${base}/assets/${vibeId}/${gender}`);
   if (!resp.ok) throw new Error("Failed to load vibe assets");
-  return resp.json(); // { costumeUrl, backgroundUrl }
+  return resp.json();
 }

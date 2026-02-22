@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { VIBES, DEFAULT_PROMPT } from "./vibes";
-import { submitJob, getVibeAssets } from "./api";
+import { generateOutfit, placeInScene, getVibeAssets } from "./api";
 
 // ─── Sub-Components ──────────────────────────────────────────────────────────
 
@@ -147,7 +147,8 @@ function ReferenceBanner({ selfiePreview, costumeUrl, backgroundUrl }) {
 
 // ─── Processing (single) ─────────────────────────────────────────────────────
 
-function ProcessingStep({ vibe, elapsed, selfiePreview, costumeUrl, backgroundUrl }) {
+function ProcessingStep({ vibe, status, elapsed, selfiePreview, costumeUrl, backgroundUrl }) {
+  const passLabel = status?.startsWith("Pass 2") ? "Step 2/2: Placing in scene" : "Step 1/2: Generating outfit";
   const tips = ["AI is analyzing your photo...", "Matching outfit to your body...", "Blending the background...", "Adding final touches...", "Almost there..."];
   const tipIndex = Math.min(Math.floor(elapsed / 15), tips.length - 1);
   return (
@@ -158,6 +159,7 @@ function ProcessingStep({ vibe, elapsed, selfiePreview, costumeUrl, backgroundUr
         <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>{vibe.emoji}</span>
       </div>
       <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, marginBottom: 6 }}>Creating Your Look</h2>
+      <p style={{ color: "#C9A96E", fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{passLabel}</p>
       <p style={{ color: "#777", fontSize: 13, marginBottom: 12 }}>{tips[tipIndex]}</p>
       <div style={{ fontFamily: "'DM Sans', monospace", fontSize: 36, fontWeight: 700, background: "linear-gradient(135deg, #C9A96E, #F0D78C)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 16 }}>{elapsed}s</div>
       <div className="shimmer-bg" style={{ height: 4, borderRadius: 2, maxWidth: 200, margin: "0 auto" }} />
@@ -210,6 +212,7 @@ export default function App() {
   const [costumeUrl, setCostumeUrl] = useState(null);
   const [backgroundUrl, setBackgroundUrl] = useState(null);
   const [lastPrompt, setLastPrompt] = useState(DEFAULT_PROMPT);
+  const [pass1Result, setPass1Result] = useState(null);
   const timerRef = useRef(null);
 
   useEffect(() => () => { clearInterval(timerRef.current); }, []);
@@ -219,7 +222,7 @@ export default function App() {
     setStep(1); setSelfie(null); setSelfiePreview(null);
     setSelectedVibe(null); setGender(null);
     setResultImage(null); setError(null); setElapsed(0);
-    setCostumeUrl(null); setBackgroundUrl(null);
+    setCostumeUrl(null); setBackgroundUrl(null); setPass1Result(null);
   };
 
   const handleFileSelect = (file) => {
@@ -235,6 +238,7 @@ export default function App() {
     setStep(4);
   };
 
+  // Full generation: Pass 1 (outfit) + Pass 2 (scene placement)
   const handleGenerate = async (prompt) => {
     setLastPrompt(prompt);
     setStep(5);
@@ -246,7 +250,13 @@ export default function App() {
       const assets = await getVibeAssets(selectedVibe.id, gender);
       setCostumeUrl(assets.costumeUrl);
       setBackgroundUrl(assets.backgroundUrl);
-      const result = await submitJob({ selfieFile: selfie, costumeUrl: assets.costumeUrl, backgroundUrl: assets.backgroundUrl, prompt, onStatus: setStatus });
+
+      // Pass 1: Generate person in outfit on neutral background
+      const outfitImage = await generateOutfit({ selfieFile: selfie, costumeUrl: assets.costumeUrl, onStatus: setStatus });
+      setPass1Result(outfitImage);
+
+      // Pass 2: Place into scene
+      const result = await placeInScene({ personImage: outfitImage, backgroundUrl: assets.backgroundUrl, prompt, onStatus: setStatus });
       setFinalElapsed(Math.floor((Date.now() - start) / 1000));
       setResultImage(result);
       setStep(6);
@@ -255,7 +265,7 @@ export default function App() {
     } finally { clearInterval(timerRef.current); }
   };
 
-  // Retry with edited prompt — reuses same costume + background
+  // Retry with edited prompt — only runs Pass 2 using cached Pass 1 result
   const handleRetryWithPrompt = async (prompt) => {
     setLastPrompt(prompt);
     setStep(5);
@@ -263,7 +273,7 @@ export default function App() {
     const start = Date.now();
     timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
     try {
-      const result = await submitJob({ selfieFile: selfie, costumeUrl, backgroundUrl, prompt, onStatus: setStatus });
+      const result = await placeInScene({ personImage: pass1Result, backgroundUrl, prompt, onStatus: setStatus });
       setFinalElapsed(Math.floor((Date.now() - start) / 1000));
       setResultImage(result);
       setStep(6);
@@ -287,7 +297,7 @@ export default function App() {
         {step === 2 && <VibeGrid selfiePreview={selfiePreview} onSelect={(v) => { setSelectedVibe(v); setStep(3); }} onBack={reset} />}
         {step === 3 && <GenderStep vibe={selectedVibe} onSelect={handleGenderSelect} onBack={() => setStep(2)} />}
         {step === 4 && <PromptEditStep vibe={selectedVibe} prompt={DEFAULT_PROMPT} onGenerate={handleGenerate} onBack={() => setStep(3)} />}
-        {step === 5 && <ProcessingStep vibe={selectedVibe} elapsed={elapsed} selfiePreview={selfiePreview} costumeUrl={costumeUrl} backgroundUrl={backgroundUrl} />}
+        {step === 5 && <ProcessingStep vibe={selectedVibe} status={status} elapsed={elapsed} selfiePreview={selfiePreview} costumeUrl={costumeUrl} backgroundUrl={backgroundUrl} />}
         {step === 6 && <ResultStep vibe={selectedVibe} resultImage={resultImage} elapsed={finalElapsed} selfiePreview={selfiePreview} costumeUrl={costumeUrl} backgroundUrl={backgroundUrl} onEditPrompt={() => setStep(7)} onTryAnother={() => { setResultImage(null); setStep(2); }} onReset={reset} />}
         {step === 7 && <PromptEditStep vibe={selectedVibe} prompt={lastPrompt} onGenerate={handleRetryWithPrompt} onBack={() => setStep(6)} />}
       </div>

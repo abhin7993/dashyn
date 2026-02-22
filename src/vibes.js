@@ -1,13 +1,12 @@
-// ─── Default Prompt (V: Extract + Place — winner from Round 4 testing) ───
+// ─── Default Prompt for Pass 2 (scene placement) ───
+// Pass 1 (outfit) uses a fixed internal prompt in api.js
 
 export const DEFAULT_PROMPT =
-  "Extract the person from Image 1, removing their original background completely. " +
-  "Dress them in the full outfit and all accessories from Image 2. Place them " +
-  "naturally into the scene from Image 3 with matching lighting and shadows. " +
-  "Maintain the original scale and proportions of all elements in Image 3's scene — " +
-  "objects like cars, buildings, and furniture must remain their real-world size relative to the person. " +
-  "The final image should look like a real photo taken at Image 3's location with no " +
-  "remnants of Image 1's environment. The person should be in the most suitable pose for the setting and outfit.";
+  "Place the person from Image 1 into the scene from Image 3. " +
+  "The person should be at realistic scale relative to all objects in the scene — " +
+  "cars, buildings, and furniture must appear their real-world size. " +
+  "Match lighting, shadows, and perspective to create a natural-looking photo. " +
+  "The person should be in the most suitable pose for the setting.";
 
 export const VIBES = [
   { id: "old_money", name: "Old Money", emoji: "💎", gradient: ["#C9A96E", "#8B6914"], tagline: "Quiet luxury, loud impact" },
