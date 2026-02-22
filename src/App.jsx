@@ -167,7 +167,7 @@ function ProcessingStep({ vibe, elapsed, selfiePreview, costumeUrl, backgroundUr
 
 // ─── Result (single) ─────────────────────────────────────────────────────────
 
-function ResultStep({ vibe, resultImage, elapsed, selfiePreview, costumeUrl, backgroundUrl, onTryAnother, onReset }) {
+function ResultStep({ vibe, resultImage, elapsed, selfiePreview, costumeUrl, backgroundUrl, onTryAnother, onEditPrompt, onReset }) {
   const download = () => { const a = document.createElement("a"); a.href = resultImage; a.download = `dashyn_${vibe.id}_${Date.now()}.png`; a.click(); };
   const share = async () => {
     if (navigator.share) { try { const blob = await (await fetch(resultImage)).blob(); const file = new File([blob], `dashyn_${vibe.id}.png`, { type: "image/png" }); await navigator.share({ files: [file], title: `My ${vibe.name} Look` }); } catch (e) {} } else { download(); }
@@ -183,6 +183,7 @@ function ResultStep({ vibe, resultImage, elapsed, selfiePreview, costumeUrl, bac
       <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
         <button onClick={download} className="btn-primary" style={{ padding: "10px 20px", fontSize: 13, background: "linear-gradient(135deg, #C9A96E, #8B6914)", color: "#fff" }}>💾 Save</button>
         <button onClick={share} className="btn-primary" style={{ padding: "10px 20px", fontSize: 13, background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.12)" }}>📤 Share</button>
+        <button onClick={onEditPrompt} className="btn-primary" style={{ padding: "10px 20px", fontSize: 13, background: "rgba(255,255,255,0.05)", color: "#ccc", border: "1px solid rgba(255,255,255,0.08)" }}>✏️ Edit Prompt</button>
       </div>
       <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 14 }}>
         <button onClick={onTryAnother} style={{ background: "none", border: "none", color: "#555", fontSize: 12, cursor: "pointer" }}>Change Vibe</button>
@@ -208,6 +209,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [costumeUrl, setCostumeUrl] = useState(null);
   const [backgroundUrl, setBackgroundUrl] = useState(null);
+  const [lastPrompt, setLastPrompt] = useState(DEFAULT_PROMPT);
   const timerRef = useRef(null);
 
   useEffect(() => () => { clearInterval(timerRef.current); }, []);
@@ -234,6 +236,7 @@ export default function App() {
   };
 
   const handleGenerate = async (prompt) => {
+    setLastPrompt(prompt);
     setStep(5);
     setError(null); setElapsed(0);
     const start = Date.now();
@@ -249,6 +252,23 @@ export default function App() {
       setStep(6);
     } catch (err) {
       console.error(err); setError(err.message); setStep(4);
+    } finally { clearInterval(timerRef.current); }
+  };
+
+  // Retry with edited prompt — reuses same costume + background
+  const handleRetryWithPrompt = async (prompt) => {
+    setLastPrompt(prompt);
+    setStep(5);
+    setError(null); setElapsed(0);
+    const start = Date.now();
+    timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    try {
+      const result = await submitJob({ selfieFile: selfie, costumeUrl, backgroundUrl, prompt, onStatus: setStatus });
+      setFinalElapsed(Math.floor((Date.now() - start) / 1000));
+      setResultImage(result);
+      setStep(6);
+    } catch (err) {
+      console.error(err); setError(err.message); setStep(7);
     } finally { clearInterval(timerRef.current); }
   };
 
@@ -268,7 +288,8 @@ export default function App() {
         {step === 3 && <GenderStep vibe={selectedVibe} onSelect={handleGenderSelect} onBack={() => setStep(2)} />}
         {step === 4 && <PromptEditStep vibe={selectedVibe} prompt={DEFAULT_PROMPT} onGenerate={handleGenerate} onBack={() => setStep(3)} />}
         {step === 5 && <ProcessingStep vibe={selectedVibe} elapsed={elapsed} selfiePreview={selfiePreview} costumeUrl={costumeUrl} backgroundUrl={backgroundUrl} />}
-        {step === 6 && <ResultStep vibe={selectedVibe} resultImage={resultImage} elapsed={finalElapsed} selfiePreview={selfiePreview} costumeUrl={costumeUrl} backgroundUrl={backgroundUrl} onTryAnother={() => { setResultImage(null); setStep(2); }} onReset={reset} />}
+        {step === 6 && <ResultStep vibe={selectedVibe} resultImage={resultImage} elapsed={finalElapsed} selfiePreview={selfiePreview} costumeUrl={costumeUrl} backgroundUrl={backgroundUrl} onEditPrompt={() => setStep(7)} onTryAnother={() => { setResultImage(null); setStep(2); }} onReset={reset} />}
+        {step === 7 && <PromptEditStep vibe={selectedVibe} prompt={lastPrompt} onGenerate={handleRetryWithPrompt} onBack={() => setStep(6)} />}
       </div>
     </div>
   );
