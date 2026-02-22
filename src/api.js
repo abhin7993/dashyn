@@ -15,7 +15,7 @@ const WORKFLOW = {
   "327": { class_type: "TextEncodeQwenImageEditPlus", inputs: { clip: ["315", 0], vae: ["316", 0], image1: ["311", 0], image2: ["304", 0], image3: ["306", 0], prompt: "" } },
   "319": { class_type: "FluxKontextMultiReferenceLatentMethod", inputs: { conditioning: ["327", 0], reference_latents_method: "index_timestep_zero" } },
   "320": { class_type: "ConditioningZeroOut", inputs: { conditioning: ["319", 0] } },
-  "321": { class_type: "EmptyLatentImage", inputs: { width: 768, height: 1344, batch_size: 1 } },
+  "321": { class_type: "EmptyLatentImage", inputs: { width: 824, height: 1376, batch_size: 1 } },
   "324": { class_type: "KSampler", inputs: { model: ["317", 0], positive: ["319", 0], negative: ["320", 0], latent_image: ["321", 0], seed: 0, steps: 4, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1 } },
   "329": { class_type: "VAEDecode", inputs: { samples: ["324", 0], vae: ["316", 0] } },
   save_image: { class_type: "SaveImage", inputs: { images: ["329", 0], filename_prefix: "vibe_output" } },
@@ -89,7 +89,7 @@ export async function submitJob({ selfieFile, costumeUrl, backgroundUrl, prompt,
   ]);
 
   const costumeB64 = await processImage(costumeBlob, { cropPortrait: false }); // costume keeps original ratio
-  const bgB64 = await processImage(bgBlob, { cropPortrait: true });
+  const bgB64 = await processImage(bgBlob, { cropPortrait: false }); // background keeps original ratio — preserves spatial context
 
   // Build workflow
   const wf = JSON.parse(JSON.stringify(WORKFLOW));
